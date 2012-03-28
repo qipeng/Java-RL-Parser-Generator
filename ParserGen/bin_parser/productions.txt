@@ -1,0 +1,25 @@
+EXP
+E
+// e0.v = (Double)e1.v;
+E
+BINARY DOT BINARY
+// e0.v = (Double)e1.v + (Double)e3.v;
+// e1.b = 1.0;
+// e3.b = Math.pow(2, -(Integer)e3.l);
+BINARY
+BINARY B
+// e0.l = (Integer)e1.l + 1;
+// e0.v = (Double)e1.v + (Double)e2.v;
+// e1.b = 2 * (Double)e0.b;
+// e2.b = (Double)e0.b;
+BINARY
+B
+// e0.v = (Double)e1.v;
+// e0.l = 1;
+// e1.b = (Double)e0.b;
+B
+ONE
+// e0.v = e0.b;
+B
+ZERO
+// e0.v = 0.0;

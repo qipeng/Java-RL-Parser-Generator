@@ -1,0 +1,7 @@
+ONE
+ZERO
+DOT
+EXP
+E
+BINARY
+B

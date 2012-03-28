@@ -1,0 +1,673 @@
+
+import java.io.*;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.Map;
+import java.util.NavigableSet;
+import java.util.Set;
+import java.util.TreeSet;
+
+
+public class LRGen {
+	private ArrayList<Symbol> symbolList;
+	private HashMap<String, Symbol> symbolMap;
+	private ArrayList<LRProduction> productionList;
+	private Action[][] table = null;
+	
+	private final Symbol SYMBOL_NON = new Symbol(SymbolType.NON);
+	private final Symbol SYMBOL_TERMINAL = new Symbol(SymbolType.TERMINAL);
+	private final Symbol SYMBOL_EQUAL = new Symbol(SymbolType.EQUAL);
+	private final Symbol SYMBOL_SEMI = new Symbol(SymbolType.SEMI);
+	private final Symbol SYMBOL_COMMA = new Symbol(SymbolType.COMMA);
+	private final Symbol SYMBOL_OR = new Symbol(SymbolType.OR);
+	private final Symbol SYMBOL_FIRST = new Symbol(SymbolType.FIRST);
+	
+	private AttGen attGen = null;
+	
+	LRGen(String[] symbolNames, AttGen att){
+		symbolMap = new HashMap<String, Symbol>();
+		symbolList = new ArrayList<Symbol>();
+		productionList = new ArrayList<LRProduction>();
+		SetSymbols(symbolNames);
+		
+		this.attGen = att;
+	}
+	
+	public void Load(String fileName) throws Exception{
+		File f = new File(fileName);
+		transferCupFile(f);
+	}
+	
+	
+	public void LRTable(){
+		ArrayList<Action[]> t = makeActionTable();
+		this.table = new Action[t.size()][];
+		t.toArray(table);
+		for(int i = table.length - 1; i >= 0; i--){
+			for (int j = table[0].length - 1; j >= 0; j--){
+				if (table[i][j] != null &&
+						table[i][j].at == ActionType.Reduce &&
+						table[i][j].v == 0){
+					table[i][j].at = ActionType.Acc;
+				}
+			}
+		}
+	}
+	
+	public Production[] getProductions(){
+		int n = productionList.size();
+		Production[] pList = new Production[n];
+		for(int i = 0; i < n; i++){
+			pList[i] = productionList.get(i).getProduction();
+		}
+		return pList;
+	}
+	
+	public Action[][] getActionTable(){
+		return this.table;		
+	}
+	
+	private ArrayList<Action[]> makeActionTable(){
+		int n = symbolList.size();
+		
+		LRProduction firstP = productionList.get(0);
+		if (firstP.rightSymbols == null || 
+				firstP.rightSymbols.length < 1){
+			return null;
+		}
+		boolean[] firstStateLineEnd = new boolean[n];
+		firstStateLineEnd[0] = true;
+		for(int i = 1; i < n; i++){
+			firstStateLineEnd[i] = false;
+		}
+		LRState firstState = new LRState(new LRStateLine[] {
+				new LRStateLine(firstP, 0, firstStateLineEnd)});
+		TreeSet<LRState> stateTree = new TreeSet<LRState>();
+		TreeSet<LRState> todoTree = new TreeSet<LRState>();
+		ArrayList<LRState> resultList = new ArrayList<LRState>();
+		ArrayList<Action[]> actionTable = new ArrayList<Action[]>();
+		Action[] emptyAction = new Action[n];
+		for (int i = 0; i < n; i++){
+			emptyAction[i] = null;
+		}
+		stateTree.add(firstState);
+		todoTree.add(firstState);
+		resultList.add(firstState);
+		actionTable.add(emptyAction.clone());
+		boolean[][] firstTable = getFirstTable();
+		
+		while(todoTree.size() > 0){
+			LRState state = todoTree.pollFirst();
+			Set<Map.Entry<Symbol, LRStateNext>> nexts =
+				state.getNextState(firstTable).entrySet();
+			Action[] actions = actionTable.get(state.index);
+			for(Map.Entry<Symbol, LRStateNext> pair : nexts){
+				Symbol symbol = pair.getKey();
+				LRStateNext next = pair.getValue();
+				if (next.retIndex >= 0){
+					actions[symbol.index] = 
+						new Action(ActionType.Reduce, next.retIndex);
+				}else{
+					LRState nState = next.state;
+					NavigableSet<LRState> subset = stateTree.subSet(
+							next.state, true, next.state, true); 
+					LRState sInList;
+					if (subset.size() == 0){
+						sInList = nState;
+						nState.index = resultList.size();
+						stateTree.add(nState);
+						todoTree.add(nState);
+						resultList.add(nState);
+						actionTable.add(emptyAction.clone());
+					}else{
+						sInList = subset.first();
+						if(sInList.combine(nState)){
+							todoTree.add(sInList);
+						}
+					}
+					ActionType type = (symbol.isTerminal() ? 
+							ActionType.Shift : ActionType.GOTO);
+					actions[symbol.index] =
+						new Action(type, sInList.index);
+				}
+			}
+		}
+		
+		System.out.print("\t");
+		for(Symbol symbol : symbolList){
+			System.out.print(symbol.value + "\t");
+		}
+		System.out.println();
+		for(int i = 0; i < resultList.size(); i++){
+			System.out.print(i + ":\t");
+			Action[] actions = actionTable.get(i);
+			for(int j = 0; j < symbolList.size(); j++)
+				if(actions[j] != null)
+					System.out.print(actions[j].at.toString() + actions[j].v + "\t");
+				else
+					System.out.print("\t");
+			System.out.println();
+		}
+		
+		return actionTable;
+	}
+	
+	//if isOK return true; if there's some bugs return false
+	private boolean transferCupFile(File cupFile) throws IOException{
+		boolean noBug = true;
+		int n0 = symbolList.size();
+		FileReader reader = new FileReader(cupFile);
+		ArrayList<Symbol> symbolLine = new ArrayList<Symbol>();
+		Symbol symbol = nextSymbol(reader);
+		
+		while(symbol != null){
+			while(symbol != null && !symbol.equals(SYMBOL_SEMI)){
+				symbolLine.add(symbol);
+				symbol = nextSymbol(reader);
+			}
+			Symbol[] ss = new Symbol[symbolLine.size()];
+			symbolLine.toArray(ss);
+			noBug &= transferLine(ss);
+			symbolLine.clear();
+			symbol = nextSymbol(reader);
+		}
+		if (symbolList.size() > n0) return false;
+		return noBug;
+	}
+	
+	private boolean SetSymbols(String[] symbolNames){
+	//	Symbol startSymbol = new Symbol(SymbolType.VAIABLE, 0, "Start0"); 
+		symbolList.clear();
+		symbolMap.clear();
+		productionList.clear();
+		
+//		symbolList.add(startSymbol);
+//		symbolMap.put(" ", startSymbol);
+//		LRProduction p = new LRProduction(0, startSymbol, null);
+//		startSymbol.addProd(p);
+//		productionList.add(p);
+		
+		
+		symbolMap.put("non", SYMBOL_NON);
+		symbolMap.put("terminal", SYMBOL_TERMINAL);
+		symbolMap.put(":=", SYMBOL_EQUAL);
+		symbolMap.put(";", SYMBOL_SEMI);
+		symbolMap.put(",", SYMBOL_COMMA);
+		symbolMap.put("|", SYMBOL_OR);
+		symbolMap.put("first", SYMBOL_FIRST);
+		boolean isUnique = true;
+		
+		for(String name : symbolNames){
+			isUnique &= (addSymbol(name) != null);
+		}
+		//Symbol startSymbol = symbolList.get(0);
+		//LRProduction p = new LRProduction(0, startSymbol, null);
+		//startSymbol.addProd(p);
+		//productionList.add(p);
+		return isUnique;
+	}
+	
+	//if add success return symbol; else return null
+	private Symbol addSymbol(String symbolName){
+		Symbol symbol = symbolMap.get(symbolName);
+		if (symbol == null){
+			symbol = new Symbol(SymbolType.VAIABLE, symbolList.size(), symbolName);
+			symbolList.add(symbol);
+			symbolMap.put(symbolName, symbol);
+			return symbol;
+		}else {
+			return null;
+		}
+		
+	}
+
+	
+	private boolean transferLine(Symbol[] sLine){
+		switch(sLine[0].type){
+		//case TERMINAL:
+		//	return doForDeclarations(sLine, 1, true);
+		//case NON:
+		//	return doForDeclarations(sLine, 2, true);
+		case FIRST:
+			if (sLine.length < 2 || sLine[1].type != SymbolType.VAIABLE){
+				return false;
+			} else {
+				productionList.get(0).rightSymbols = new Symbol[] {sLine[1]};
+				//sLine[1].setTerminal(false);
+				return true;
+			}
+		case VAIABLE:
+			if (sLine[1].type != SymbolType.EQUAL) 
+				return false;
+			else
+				return doForProductions(sLine);
+		default:
+			return false;
+		}
+	}
+		
+	private boolean doForProductions(Symbol[] sLine){
+		int start = 2;
+		while(start < sLine.length){
+			int end = start;
+			while(
+					end < sLine.length && 
+					sLine[end].type != SymbolType.OR){
+				end ++;
+			}
+			
+			Symbol leftSymbol = sLine[0];
+			Symbol[] rightSymbols = new Symbol[end - start];			
+			for(int i = start; i < end; i++){
+				if (sLine[i].type != SymbolType.VAIABLE){
+					return false;
+				}
+				rightSymbols[i - start] = sLine[i];
+			}
+			LRProduction p = new LRProduction(
+					productionList.size(), leftSymbol, rightSymbols);
+			productionList.add(p);
+			leftSymbol.addProd(p);
+			start = end + 1;
+		}
+		return true;
+	}
+
+	
+	private boolean[][] getFirstTable(){
+		int n = symbolList.size();
+		
+		boolean[][] isFirst = new boolean[n][n];//isFirst[A][B} = true when B is the first of A
+		for(int i = 0; i < n; i++){
+			for (int j = 0; j < n; j++){
+				isFirst[i][j] = false;
+			}
+			isFirst[i][i] = true;
+		}
+		
+		for(Symbol symbolA : symbolList){
+			ArrayList<Symbol> firstList = symbolA.getFirstSymbols();
+			int A = symbolA.index;
+			for(Symbol symbolB : firstList){
+				int B = symbolB.index;
+				if (isFirst[A][B]) continue;
+				isFirst[A][B] = true;
+				for(int C = 0; C < n; C++){
+					if (!isFirst[C][A] || isFirst[C][B]) continue;
+					isFirst[C][B] = true;
+					for (int D = 0; D < n; D++){
+						if (isFirst[B][D]) isFirst[A][D] = true;
+					}
+				}
+			}
+		}
+		
+		return isFirst;
+	}
+	
+	private Symbol nextSymbol(Reader reader) throws IOException{
+		if (reader == null) return null;
+		
+		StringBuffer sBuffer = new StringBuffer();
+		int c = reader.read();
+		while(isEmptyChar(c)){ 
+			if (c < 0) return null;
+			c = reader.read();
+		}
+		while(!isEmptyChar(c)){
+			sBuffer.append((char)c);
+			c = reader.read();
+		}
+		
+		String s = sBuffer.toString();
+		
+		Symbol symbol = symbolMap.get(s);
+		if (symbol != null) return symbol;
+		symbol = addSymbol(s);
+		return symbol;
+	}
+	
+	private boolean isEmptyChar(int t){
+		switch(t){
+		case -1:
+		case (int)'\t':
+		case (int)'\n':
+		case (int)'\r':
+		case (int)' ':
+			return true;
+		default:
+			return false;
+		}
+	}
+	
+	
+	class LRStateNext{
+		public int retIndex;
+		public LRState state;
+		
+		LRStateNext(int retIndex){
+			this.retIndex = retIndex;
+			state = null;
+		}
+		
+		LRStateNext(LRState state){
+			this.state = state;
+			retIndex = -1;
+		}
+	}
+	
+	class LRState implements Comparable<LRState>{
+		public int index;
+		
+		public TreeSet<LRStateLine> cores;
+		
+		@Override
+		public int compareTo(LRState state) {
+			if (this.cores == null || state.cores == null) return 0;
+			int dn = this.cores.size() - state.cores.size();
+			if (dn != 0) return dn;
+			Iterator<LRStateLine> iThis = this.cores.iterator();
+			Iterator<LRStateLine> iState = state.cores.iterator();
+			while(iThis.hasNext()){
+				dn = iThis.next().compareTo(iState.next());
+				if (dn != 0) return dn;
+			}
+			return 0;
+		}
+		
+		public LRState(LRStateLine[] cores){
+			this.cores = new TreeSet<LRStateLine>();
+			for(LRStateLine line: cores){
+				this.cores.add(line);
+			}
+		}
+		
+		//if changed return true;
+		public boolean combine(LRState state){
+			if (state.cores.size() != this.cores.size()) return false;
+			Iterator<LRStateLine> iThis = this.cores.iterator();
+			Iterator<LRStateLine> iState = state.cores.iterator();
+			boolean changed = false;
+			while(iThis.hasNext()){
+				changed |= iThis.next().combine(iState.next().isEndSymbol);
+			}
+			return changed;
+		}
+		
+		public HashMap<Symbol, LRStateNext> getNextState(boolean[][] firstTable){
+			HashMap<Symbol, LRStateNext> result = new HashMap<Symbol, LRStateNext>();
+			for(LRStateLine line: cores){
+				line.addNextLine(result);
+			}
+			for(LRStateLine line: getOtherLines(firstTable)){
+				line.addNextLine(result);
+			}
+			return result;
+		}
+		
+		private void addLine(LRStateLine line){
+			boolean added = false;
+			for(LRStateLine coreLine : cores){
+				if (coreLine.prods == line.prods){
+					for (int i = 0; i < coreLine.isEndSymbol.length; i++){
+						coreLine.isEndSymbol[i] |= line.isEndSymbol[i];
+					}
+					added = true;
+					break;
+				}
+			}
+			if (!added){
+				cores.add(line);
+			}
+			
+		}
+		
+		private Collection<LRStateLine> getOtherLines(boolean[][] firstTable){	
+			HashMap<LRProduction, LRStateLine> todoTable = 
+				new HashMap<LRProduction, LRStateLine>();
+			HashMap<LRProduction, LRStateLine> doneTable = 
+				new HashMap<LRProduction, LRStateLine>();
+			
+			for(LRStateLine line : cores){
+				line.nextSymbol(firstTable, todoTable, doneTable);
+			}
+			
+			while(todoTable.size() > 0){
+				LRStateLine line = (LRStateLine)todoTable.values().toArray()[0];
+				todoTable.remove(line.prods);
+				doneTable.put(line.prods, line);
+				line.nextSymbol(firstTable, todoTable, doneTable);
+			}
+			
+			return doneTable.values();
+		}
+
+	}
+	
+	class LRStateLine implements Comparable<LRStateLine>{
+		public LRProduction prods;
+		public int current;
+		public boolean[] isEndSymbol;
+		
+
+		@Override
+		public int compareTo(LRStateLine o) {
+			int dn = this.prods.index - o.prods.index;
+			if (dn != 0) return dn;
+			dn = this.current - o.current;
+			return dn;
+		}
+		
+		LRStateLine(LRProduction prods, int count, boolean[] isEndSymbol){
+			this.prods = prods;
+			this.isEndSymbol = isEndSymbol.clone();
+			this.current = count;
+		}
+		
+		public void addNextLine(HashMap<Symbol, LRStateNext> result){
+			if (current >= prods.rightSymbols.length){
+				for(int i = isEndSymbol.length - 1; i >= 0; i--){
+					if(isEndSymbol[i]){
+						result.put(symbolList.get(i), new LRStateNext(prods.index));
+					}
+				}
+			} else {
+				LRStateLine nextLine = new LRStateLine(prods, current + 1, isEndSymbol);
+				Symbol symbol = currentSymbol();
+				LRStateNext stateNext = result.get(symbol);
+				if (stateNext == null){
+					stateNext = new LRStateNext(new LRState(new LRStateLine[] {nextLine}));
+					result.put(symbol, stateNext);
+				}else if (stateNext.state != null){
+					stateNext.state.addLine(nextLine);
+				}
+			}
+		}
+		
+		public Symbol currentSymbol(){
+			if (current >= prods.rightSymbols.length) 
+				return null;
+			else
+				return prods.rightSymbols[current];
+		}
+		
+		/*
+		//A = B.CD
+		//add <C, First(D)> into nextTable
+		public void nextSymbol(boolean[][] firstTable, HashMap<Symbol, boolean[]> nextTable){
+			int n = symbolList.size();
+			
+			Symbol currentSymbol = currentSymbol();
+			boolean[] nextRow = nextTable.get(currentSymbol);
+			if (nextRow == null){
+				nextRow = new boolean[n];
+				for (int i = 0; i < n; i++) nextRow[i] = false;
+				nextTable.put(currentSymbol, nextRow);
+			}
+			
+			int next = current + 1;
+			if (next < prods.rightSymbols.length){				
+				int nextID = prods.rightSymbols[next].index;
+				for (int i = 0; i < n; i++){
+					nextRow[i] |= firstTable[nextID][i];
+				}
+			} else {
+				for (int i = 0; i < n; i++){
+					nextRow[i] |= isEndSymbol[i];
+				}
+			}
+		}
+		*/
+		
+		//A = B.CD
+		//add <C.prod, First(D)> into nextTable
+		public void nextSymbol(
+				boolean[][] firstTable, 
+				HashMap<LRProduction, LRStateLine> todoTable,
+				HashMap<LRProduction, LRStateLine> doneTable){
+			if (currentSymbol() == null) return;
+			
+			boolean[] nextSymbol;
+			int next = current + 1;
+			if (next < prods.rightSymbols.length){				
+				nextSymbol = firstTable[prods.rightSymbols[next].index];
+			} else {
+				nextSymbol = this.isEndSymbol.clone();
+			}
+			
+			for(LRProduction p : currentSymbol().prodList){
+				LRStateLine line = todoTable.get(p);
+				if (line == null) line = doneTable.get(p);
+				if (line == null) {
+					line = new LRStateLine(p, 0, nextSymbol);
+					todoTable.put(p, line);
+				}else{
+					if (line.combine(nextSymbol)){
+						doneTable.remove(p);
+						todoTable.put(p, line);
+					}
+				}
+			}	
+		}
+		
+		public boolean combine(boolean[] ends){
+			if (this.isEndSymbol.length != ends.length)
+				return false;
+			boolean changed = false;
+			for(int i = 0; i < ends.length; i++){
+				if (ends[i] && !this.isEndSymbol[i]){
+					this.isEndSymbol[i] = true;
+					changed = true;
+				}
+			}
+			return changed;
+		}
+
+	}
+	
+	
+	enum SymbolType{
+		NON,
+		TERMINAL,
+		VAIABLE,
+		EQUAL,
+		SEMI,
+		COMMA,
+		OR,
+		FIRST
+	}
+
+	class Symbol{	
+		public SymbolType type;
+		public int index;
+		public String value;
+		public ArrayList<LRProduction> prodList;
+		
+		Symbol(SymbolType type){
+			this(type, 0, type.toString());
+		}
+		
+		Symbol(SymbolType type, int index, String value){
+			this.type = type;
+			this.index = index;
+			this.value = value;
+			this.prodList = new ArrayList<LRProduction>();
+		}
+		
+		public boolean equals(Symbol s){
+			return this.type == s.type && this.index == s.index;
+		}
+		
+		public boolean isTerminal(){
+			return prodList.size() == 0;
+		}
+		
+		/*
+		public void setTerminal(boolean isTerminal){
+			if (isTerminal){
+				prodList = null;
+			}else if (prodList == null){
+				prodList = new ArrayList<LRProduction>();
+			}
+		}*/
+		
+		public void addProd(LRProduction p){
+			prodList.add(p);
+		}
+		
+		public ArrayList<Symbol> getFirstSymbols(){
+			ArrayList<Symbol> firstSymbols = new ArrayList<Symbol>();
+			for(LRProduction p: prodList){
+				Symbol symbol = p.rightSymbols[0];
+				if (!firstSymbols.contains(symbol)){
+					firstSymbols.add(symbol);
+				}
+			}
+			return firstSymbols;
+		}
+	}
+
+	public class LRProduction{
+		public int index;
+		public Symbol leftSymbol;
+		public Symbol[] rightSymbols;
+		
+		public LRProduction(int index, Symbol leftSymbol, Symbol[] rightSymbols){
+			this.index = index;
+			this.leftSymbol = leftSymbol;
+			this.rightSymbols = rightSymbols;
+		}
+		
+		public Production getProduction(){
+			int n = rightSymbols.length;
+			int[] rightIDs = new int[n];
+			for(int i = 0; i < n; i++){
+				rightIDs[i] = rightSymbols[i].index;
+			}
+			return new Production(leftSymbol.index, rightIDs);
+		}
+	}
+}
+
+class Production{
+	public int leftID;
+	public int[] rightIDs;
+	
+	public Production(int lID,int[] rIDs){
+		leftID = lID;
+		rightIDs = rIDs;
+	}
+}
+
+class Action{
+	public ActionType at;
+	public int v;
+	public Action(ActionType at, int v){
+		this.at = at;
+		this.v = v;
+	}
+}
+
+enum ActionType{Shift,Reduce,Acc,GOTO}

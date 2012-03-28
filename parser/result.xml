@@ -1,0 +1,107 @@
+<tree>
+<declarations>
+<attributeDecl name="name" type="String"/>
+</declarations>
+<branch>
+<attribute name="name" value="E1[v=5.0]"/>
+<branch>
+<attribute name="name" value="E1[v=2.0]"/>
+<branch>
+<attribute name="name" value="E2[v=2.0]"/>
+<branch>
+<attribute name="name" value="E2[v=1.0]"/>
+<branch>
+<attribute name="name" value="NUMBER[v=1.0]"/>
+</branch>
+</branch>
+<branch>
+<attribute name="name" value="TIMES[]"/>
+</branch>
+<branch>
+<attribute name="name" value="E2[v=2.0]"/>
+<branch>
+<attribute name="name" value="NUMBER[v=2.0]"/>
+</branch>
+</branch>
+</branch>
+</branch>
+<branch>
+<attribute name="name" value="PLUS[]"/>
+</branch>
+<branch>
+<attribute name="name" value="E1[v=3.0]"/>
+<branch>
+<attribute name="name" value="E2[v=3.0]"/>
+<branch>
+<attribute name="name" value="E2[v=12.0]"/>
+<branch>
+<attribute name="name" value="E2[v=3.0]"/>
+<branch>
+<attribute name="name" value="NUMBER[v=3.0]"/>
+</branch>
+</branch>
+<branch>
+<attribute name="name" value="TIMES[]"/>
+</branch>
+<branch>
+<attribute name="name" value="E2[v=4.0]"/>
+<branch>
+<attribute name="name" value="NUMBER[v=4.0]"/>
+</branch>
+</branch>
+</branch>
+<branch>
+<attribute name="name" value="DIV[]"/>
+</branch>
+<branch>
+<attribute name="name" value="E2[v=4.0]"/>
+<branch>
+<attribute name="name" value="LBR[]"/>
+</branch>
+<branch>
+<attribute name="name" value="E1[v=4.0]"/>
+<branch>
+<attribute name="name" value="E1[v=11.0]"/>
+<branch>
+<attribute name="name" value="E1[v=5.0]"/>
+<branch>
+<attribute name="name" value="E2[v=5.0]"/>
+<branch>
+<attribute name="name" value="NUMBER[v=5.0]"/>
+</branch>
+</branch>
+</branch>
+<branch>
+<attribute name="name" value="PLUS[]"/>
+</branch>
+<branch>
+<attribute name="name" value="E1[v=6.0]"/>
+<branch>
+<attribute name="name" value="E2[v=6.0]"/>
+<branch>
+<attribute name="name" value="NUMBER[v=6.0]"/>
+</branch>
+</branch>
+</branch>
+</branch>
+<branch>
+<attribute name="name" value="MINUS[]"/>
+</branch>
+<branch>
+<attribute name="name" value="E1[v=7.0]"/>
+<branch>
+<attribute name="name" value="E2[v=7.0]"/>
+<branch>
+<attribute name="name" value="NUMBER[v=7.0]"/>
+</branch>
+</branch>
+</branch>
+</branch>
+<branch>
+<attribute name="name" value="RBR[]"/>
+</branch>
+</branch>
+</branch>
+</branch>
+</branch>
+</tree>

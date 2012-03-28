@@ -1,0 +1,13 @@
+This project is for generating Java parser of a given language, and computing semantic-directed attribute values.
+
+"parserGen" is the directory for the project. "parser" contains the corresponding generated Java parser. The grammar is defined in "productions.txt", "symbols.txt", and "tokens.txt" under "parserGen", which defines the productions (and comment-style lines that follows a production are the semantic attributes and their calculation rules, in Java), token names that are used in productions, and what the tokens represent (in Java regular expression).
+
+In this example, we define binary real numbers and calculate their values in a decimal sense. Explanations of the tokens are given here for your convenience of reading the example.
+
+EXP	Expression
+E	Expression (the first production in the file must be a one-to-one production, that's why we have EXP -> E)
+BINARY	Binary integer
+B	Binary figure (0 or 1)
+ONE	Binary 1
+ZERO	Binary 0
+DOT	Binary point
